@@ -1,0 +1,4 @@
+[
+    {"pacakge_name": "Something", "version": "1.2.3", "version_expression": null},
+    {"pacakge_name": "pytest", "version": null, "version_expression": ">=3.8 | >1.1,<4.0"}
+]

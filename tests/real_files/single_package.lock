@@ -1,0 +1,6 @@
+
+    [[package]]
+    name = "requests"
+    version = "2.25.1"
+    python-versions = ">=3.6"
+    

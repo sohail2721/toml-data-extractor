@@ -1,4 +1,5 @@
 import toml
+import re
 
 def extract_poetry_lock_info(poetry_lock_file):
     with open(poetry_lock_file, 'r') as f:
@@ -15,13 +16,19 @@ def extract_poetry_lock_info(poetry_lock_file):
         markers = package.get("markers", None)
 
         version_expression = None
+        
+        # If python-versions exists, use it
         if python_versions:
             version_expression = python_versions
+        # If markers exist and contain a python_version specification, use regex to extract it
         elif markers and 'python_version' in markers:
-            version_expression = markers.split('python_version')[1].split('"')[1]
+            # Updated regex to handle both single and double quotes around version numbers
+            match = re.search(r'python_version\s*([<>=!]+[\'"]?[\d\.]+[\'"]?)', markers)
+            if match:
+                # Clean any quotes around the version expression
+                version_expression = match.group(1).replace('"', '').replace("'", "")
         
         package_info["version_expression"] = version_expression
-
         package_info_list.append(package_info)
 
     return package_info_list

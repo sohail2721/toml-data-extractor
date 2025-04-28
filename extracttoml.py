@@ -1,44 +1,74 @@
 import toml
+import re
+
+def parse_dependency_string(dep_str):
+    # Example: "starlette>=0.40.0,<0.47.0"
+    match = re.match(r'^([a-zA-Z0-9_\-\.]+)\s*(.*)$', dep_str)
+    if match:
+        package_name, version_expression = match.groups()
+        return {
+            "package_name": package_name,
+            "version": None,
+            "version_expression": version_expression.strip() if version_expression else None
+        }
+    else:
+        # If parsing fails, return the package name with no version expression
+        return {
+            "package_name": dep_str,
+            "version": None,
+            "version_expression": None
+        }
+
+def process_poetry_dependencies(dependencies):
+    processed = []
+    for dep, version in dependencies.items():
+        if isinstance(version, dict):
+            # Extract version expression if it exists
+            version_expression = version.get('version')
+        elif isinstance(version, str):
+            version_expression = version
+        else:
+            version_expression = None
+
+        processed.append({
+            "package_name": dep,
+            "version": None,
+            "version_expression": version_expression
+        })
+    return processed
 
 def extract_package_data(toml_file):
-    # Load the TOML file
     with open(toml_file, 'r') as file:
         data = toml.load(file)
-    
-    # Initialize the result list
+
     result = []
 
-    # Function to process dependencies
-    def process_dependencies(dependencies):
-        for dep, version in dependencies.items():
-            # Initialize version_expression to None
-            version_expression = None
-            
-            # Check if the version is a range (e.g., "^3.9.0" or ">=1.0,<2.0")
-            if isinstance(version, str):
-                # Check if it contains a range or caret notation
-                if any(operator in version for operator in ['>=', '<=', '>', '<', '^']):
-                    version_expression = version
-                    version = None  # Clear the version since it's a range
-
-            result.append({
-                "package_name": dep,
-                "version": version,
-                "version_expression": version_expression
-            })
+    # Handle [project] table (PEP 621)
+    project_data = data.get('project', {})
     
-    # Extract regular dependencies from 'tool.poetry.dependencies'
-    if 'tool' in data and 'poetry' in data['tool'] and 'dependencies' in data['tool']['poetry']:
-        process_dependencies(data['tool']['poetry']['dependencies'])
-
-    # Extract development dependencies from 'tool.poetry.group.dev.dependencies'
-    if 'tool' in data and 'poetry' in data['tool'] and 'group' in data['tool']['poetry'] and 'dev' in data['tool']['poetry']['group'] and 'dependencies' in data['tool']['poetry']['group']['dev']:
-        process_dependencies(data['tool']['poetry']['group']['dev']['dependencies'])
+    # Extract dependencies from [project.dependencies] (PEP 621)
+    project_dependencies = project_data.get('dependencies', [])
+    if project_dependencies:
+        for dep_str in project_dependencies:
+            result.append(parse_dependency_string(dep_str))
     
-    # Print the result
-    for item in result:
-        print(item)
+    # Extract optional dependencies from [project.optional-dependencies] (PEP 621)
+    optional_dependencies = project_data.get('optional-dependencies', {})
+    for group_name, deps in optional_dependencies.items():
+        for dep_str in deps:
+            result.append(parse_dependency_string(dep_str))
 
-# Example usage with the provided toml file
-toml_file = "pyproject.toml"  # Path to your toml file
-extract_package_data(toml_file)
+    # Handle [tool.poetry] table
+    poetry_data = data.get('tool', {}).get('poetry', {})
+    poetry_dependencies = poetry_data.get('dependencies', {})
+    if poetry_dependencies:
+        result.extend(process_poetry_dependencies(poetry_dependencies))
+
+    # Handle [tool.poetry.group.*.dependencies]
+    groups = poetry_data.get('group', {})
+    for group_data in groups.values():
+        group_dependencies = group_data.get('dependencies', {})
+        if group_dependencies:
+            result.extend(process_poetry_dependencies(group_dependencies))
+
+    return result
